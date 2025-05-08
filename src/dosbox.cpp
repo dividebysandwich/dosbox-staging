@@ -870,6 +870,10 @@ void DOSBOX_Init()
 	// Configure Innovation SSI-2001 emulation
 	INNOVATION_AddConfigSection(control);
 
+	// Configure Disk noise emulation
+	DISKNOISE_AddConfigSection(control);
+
+
 	// PC speaker emulation
 	secprop = control->AddSection_prop("speaker",
 	                                   &PCSPEAKER_Init,

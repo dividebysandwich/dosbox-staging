@@ -40,6 +40,7 @@
 #include "string_utils.h"
 #include "cross.h"
 #include "inout.h"
+#include "../hardware/disk_noise.h"
 
 bool localDrive::FileIsReadOnly(const char* name)
 {
@@ -584,6 +585,11 @@ bool localFile::Read(uint8_t *data, uint16_t *size)
 		return false;
 	}
 
+	if (hdd_noise) {
+		hdd_noise->PlaySeek();  // Play noise on read
+		LOG_INFO("FS: Read %u bytes from file '%s'", *size, path.string().c_str());
+	}
+
 	/* Fake harddrive motion. Inspector Gadget with Sound Blaster compatible */
 	/* Same for Igor */
 	/* hardrive motion => unmask irq 2. Only do it when it's masked as
@@ -617,6 +623,9 @@ bool localFile::Write(uint8_t *data, uint16_t *size)
 		// Truncation succeeded if we made it here
 		return true;
 	}
+
+	if (hdd_noise)
+		hdd_noise->PlaySeek();  // Play noise on write
 
 	// Otherwise we have some data to write
 	const auto ret = write_native_file(file_handle, data, *size);

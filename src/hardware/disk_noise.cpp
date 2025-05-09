@@ -71,13 +71,11 @@ DiskNoiseDevice::DiskNoiseDevice(const std::string& spin_sample_path,
 	spin_channel_ = MIXER_AddChannel(spin_callback,
 	                                 44100,
 	                                 spin_channel_name.c_str(),
-	                                 {ChannelFeature::Stereo,
-                                      ChannelFeature::DigitalAudio});
+	                                 {ChannelFeature::Stereo});
 	seek_channel_ = MIXER_AddChannel(seek_callback,
 	                                 44100,
 	                                 seek_channel_name.c_str(),
-	                                 {ChannelFeature::Stereo,
-                                      ChannelFeature::DigitalAudio});
+	                                 {ChannelFeature::Stereo});
 
                                      
 	// auto callback = std::bind(&CDROM_Interface_Physical::CdAudioCallback,
@@ -89,7 +87,8 @@ DiskNoiseDevice::DiskNoiseDevice(const std::string& spin_sample_path,
 	//                                  {ChannelFeature::Stereo,
 	//                                   ChannelFeature::DigitalAudio});
 
-	MIXER_LockMixerThread();
+	MIXER_UnlockMixerThread();
+
 	spin_channel_->Enable(false);
 	seek_channel_->Enable(false);
 
@@ -188,6 +187,8 @@ void DiskNoiseDevice::Shutdown()
 	seek_channel_->Enable(false);
 	spin_channel_.reset();
 	seek_channel_.reset();
+	MIXER_DeregisterChannel(spin_channel_);
+	MIXER_DeregisterChannel(seek_channel_);
 }
 
 
@@ -226,11 +227,10 @@ void DISKNOISE_Init(Section* section)
 void DISKNOISE_ShutDown([[maybe_unused]] Section* section)
 {
     // TODO: Fix Cleanup
-    MIXER_LockMixerThread();
+//    MIXER_LockMixerThread();
 	floppy_noise->Shutdown();
-    floppy_noise.reset();
-	hdd_noise.reset();
-    MIXER_UnlockMixerThread();
+	hdd_noise->Shutdown();
+//    MIXER_UnlockMixerThread();
 }
 
 void init_disknoise_dosbox_settings(Section_prop& secprop)

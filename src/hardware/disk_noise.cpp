@@ -1,7 +1,23 @@
+/*
+ *  Copyright (C) 2002-2021  The DOSBox Team
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ */
+
 #include "disk_noise.h"
-#include "mixer.h"
-#include "setup.h"
-#include "timer.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -11,6 +27,13 @@
 #include <string>
 #include <vector>
 
+#include "mixer.h"
+#include "setup.h"
+#include "timer.h"
+
+// ******************************************************
+// Simulated disk noise for floppy and hard disk drives
+// ******************************************************
 
 // Load a disk noise sample. Expects a WAV file with 16-bit PCM data at 44100 Hz.
 void DiskNoiseDevice::LoadSample(const std::string& path, std::vector<int16_t>& buffer)
@@ -21,7 +44,7 @@ void DiskNoiseDevice::LoadSample(const std::string& path, std::vector<int16_t>& 
 		return;
 	}
 
-    // Skip 44 bytes of the WAV header
+	// Skip 44 bytes of the WAV header
 	char header[44];
 	file.read(header, 44);
 
@@ -30,7 +53,9 @@ void DiskNoiseDevice::LoadSample(const std::string& path, std::vector<int16_t>& 
 	while (file.read(reinterpret_cast<char*>(&sample), sizeof(sample))) {
 		temp.push_back(sample);
 	}
-	LOG_DEBUG("DiskNoiseDevice: Loaded %zu samples from %s", temp.size(), path.c_str());
+	LOG_DEBUG("DiskNoiseDevice: Loaded %zu samples from %s",
+	          temp.size(),
+	          path.c_str());
 	buffer = std::move(temp);
 }
 
@@ -46,23 +71,23 @@ DiskNoiseDevice::DiskNoiseDevice(const std::string& spin_sample_path,
           spin_channel_(nullptr),
           seek_channel_(nullptr)
 {
-    LOG_DEBUG("DiskNoiseDevice: Loading samples: %s, %s",
-             spin_sample_path.c_str(),
-             seek_sample_path.c_str());
+	LOG_DEBUG("DiskNoiseDevice: Loading samples: %s, %s",
+	          spin_sample_path.c_str(),
+	          seek_sample_path.c_str());
 	LoadSample(spin_sample_path, spin_sample_);
 	LoadSample(seek_sample_path, seek_sample_);
 
 	using namespace std::placeholders;
 
-    MIXER_LockMixerThread();
+	MIXER_LockMixerThread();
 
 	auto spin_callback = std::bind(&DiskNoiseDevice::AudioCallbackSpin,
-							  this,
-							  std::placeholders::_1);
+	                               this,
+	                               std::placeholders::_1);
 
 	auto seek_callback = std::bind(&DiskNoiseDevice::AudioCallbackSeek,
-							  this,
-							  std::placeholders::_1);
+	                               this,
+	                               std::placeholders::_1);
 
 	spin_channel_ = MIXER_AddChannel(spin_callback,
 	                                 44100,
@@ -73,23 +98,22 @@ DiskNoiseDevice::DiskNoiseDevice(const std::string& spin_sample_path,
 	                                 seek_channel_name.c_str(),
 	                                 {ChannelFeature::Stereo});
 
-                                     
 	MIXER_UnlockMixerThread();
 
 	spin_channel_->Enable(false);
 	seek_channel_->Enable(false);
 
-    // Automatically start spinning for HDDs
-    if (spin_channel_name == "HDD_SPIN") {
-        ActivateSpin();
-    }
+	// Automatically start spinning for HDDs
+	if (spin_channel_name == "HDD_SPIN") {
+		ActivateSpin();
+	}
 }
 
 void DiskNoiseDevice::ActivateSpin()
 {
-    LOG_DEBUG("DiskNoiseDevice: Activating spin");
+	LOG_DEBUG("DiskNoiseDevice: Activating spin");
 
-    last_activity_ = GetTicks();
+	last_activity_ = GetTicks();
 	spin_channel_->Enable(true);
 }
 
@@ -100,16 +124,13 @@ void DiskNoiseDevice::PlaySeek()
 }
 
 void DiskNoiseDevice::AudioCallbackSpin(const int frames)
-//void DiskNoiseDevice::AudioCallbackSpin(uint8_t* stream, const int len)
 {
-	const int now    = GetTicks();
-	const int fade   = (spinup_fade_ms * 44100) / 1000;
+	const int now  = GetTicks();
+	const int fade = (spinup_fade_ms * 44100) / 1000;
 
-//	LOG_INFO("DiskNoiseDevice: AudioCallbackSpin: %d frames", frames);
+	std::vector<int16_t> out(frames * 2);
 
-	std::vector<int16_t> out(frames*2);
-
-	for (int i = 0; i < frames*2; ++i) {
+	for (int i = 0; i < frames * 2; ++i) {
 		if (spin_sample_.empty()) {
 			out[i] = 0;
 			continue;
@@ -127,15 +148,15 @@ void DiskNoiseDevice::AudioCallbackSpin(const int frames)
 			spin_pos_ = 0;
 		}
 	}
-	spin_channel_->AddSamples_s16(frames, out.data()); 
+	spin_channel_->AddSamples_s16(frames, out.data());
 }
 
 void DiskNoiseDevice::AudioCallbackSeek(const int frames)
 {
 
-    std::vector<int16_t> out(frames*2);
+	std::vector<int16_t> out(frames * 2);
 
-	for (int i = 0; i < frames*2; ++i) {
+	for (int i = 0; i < frames * 2; ++i) {
 		out[i] = (seek_pos_ < seek_sample_.size())
 		               ? seek_sample_[seek_pos_++]
 		               : 0;
@@ -144,9 +165,8 @@ void DiskNoiseDevice::AudioCallbackSeek(const int frames)
 	if (seek_pos_ >= seek_sample_.size()) {
 		seek_channel_->Enable(false);
 	}
-    seek_channel_->AddSamples_s16(frames, out.data()); 
+	seek_channel_->AddSamples_s16(frames, out.data());
 }
-
 
 void DiskNoiseDevice::Shutdown()
 {
@@ -159,14 +179,13 @@ void DiskNoiseDevice::Shutdown()
 	MIXER_DeregisterChannel(seek_channel_);
 }
 
-
 std::unique_ptr<DiskNoiseDevice> floppy_noise = nullptr;
-std::unique_ptr<DiskNoiseDevice> hdd_noise = nullptr;
+std::unique_ptr<DiskNoiseDevice> hdd_noise    = nullptr;
 
 void DISKNOISE_Init(Section* section)
 {
-    assert(section);
-    const auto prop = static_cast<Section_prop*>(section);
+	assert(section);
+	const auto prop = static_cast<Section_prop*>(section);
 
 	const std::string floppy_spin = prop->Get_string("floppy_spin_sample");
 	const std::string floppy_seek = prop->Get_string("floppy_seek_sample");
@@ -174,23 +193,19 @@ void DISKNOISE_Init(Section* section)
 	const std::string hdd_seek    = prop->Get_string("hdd_seek_sample");
 
 	if (!floppy_spin.empty() || !floppy_seek.empty()) {
-		floppy_noise = std::make_unique<DiskNoiseDevice>(
-			floppy_spin,
-			floppy_seek,
-			"FLOPPY_SPIN",
-			"FLOPPY_SEEK");
+		floppy_noise = std::make_unique<DiskNoiseDevice>(floppy_spin,
+		                                                 floppy_seek,
+		                                                 "FLOPPY_SPIN",
+		                                                 "FLOPPY_SEEK");
 	}
 
 	if (!hdd_spin.empty() || !hdd_seek.empty()) {
-		hdd_noise = std::make_unique<DiskNoiseDevice>(
-			hdd_spin,
-			hdd_seek,
-			"HDD_SPIN",
-			"HDD_SEEK");
+		hdd_noise = std::make_unique<DiskNoiseDevice>(hdd_spin,
+		                                              hdd_seek,
+		                                              "HDD_SPIN",
+		                                              "HDD_SEEK");
 	}
-
 }
-
 
 void DISKNOISE_ShutDown([[maybe_unused]] Section* section)
 {
@@ -207,38 +222,40 @@ void init_disknoise_dosbox_settings(Section_prop& secprop)
 	str_prop->Set_help(
 	        "Path to a .wav file for the floppy spin noise emulation.\n"
 	        "Leave empty to not play this noise.\n"
-            "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
+	        "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
 
-    str_prop = secprop.Add_string("floppy_seek_sample", when_idle, "");
+	str_prop = secprop.Add_string("floppy_seek_sample", when_idle, "");
 	assert(str_prop);
 	str_prop->Set_help(
 	        "Path to a .wav file for the floppy seek noise emulation.\n"
 	        "Leave empty to not play this noise.\n"
-            "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
+	        "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
 
-   	str_prop = secprop.Add_string("hdd_spin_sample", when_idle, "");
+	str_prop = secprop.Add_string("hdd_spin_sample", when_idle, "");
 	assert(str_prop);
 	str_prop->Set_help(
 	        "Path to a .wav file for the hard disk spin noise emulation.\n"
 	        "Leave empty to not play this noise.\n"
-            "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
+	        "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
 
-    str_prop = secprop.Add_string("hdd_seek_sample", when_idle, "");
+	str_prop = secprop.Add_string("hdd_seek_sample", when_idle, "");
 	assert(str_prop);
 	str_prop->Set_help(
 	        "Path to a .wav file for the hard disk seek noise emulation.\n"
 	        "Leave empty to not play this noise.\n"
-            "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
-    
+	        "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
 }
 
 void DISKNOISE_AddConfigSection(const ConfigPtr& conf)
 {
 	assert(conf);
 
-	constexpr auto changeable_at_runtime = false; // TODO: Deal with runtime changes
+	constexpr auto changeable_at_runtime = false; // TODO: Deal with runtime
+	                                              // changes
 
-	Section_prop* sec = conf->AddSection_prop("disknoise", &DISKNOISE_Init, changeable_at_runtime);
+	Section_prop* sec = conf->AddSection_prop("disknoise",
+	                                          &DISKNOISE_Init,
+	                                          changeable_at_runtime);
 	assert(sec);
 	init_disknoise_dosbox_settings(*sec);
 }

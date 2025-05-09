@@ -5,8 +5,22 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "mixer.h"
 
-class MixerChannel;
+
+// class DiskNoiseDeviceInterface {
+// public:
+// 	virtual ~DiskNoiseDeviceInterface() = default;
+
+// 	virtual void ActivateSpin();
+// 	virtual void PlaySeek();
+// 	virtual void Shutdown();
+
+// private:
+// 	void LoadSample(const std::string& path, std::vector<int16_t>& buffer);
+// 	void AudioCallbackSpin(const int len);
+// 	void AudioCallbackSeek(const int len);
+// };
 
 class DiskNoiseDevice {
 public:
@@ -17,23 +31,25 @@ public:
 
 	void ActivateSpin();
 	void PlaySeek();
+	void Shutdown();
 
 private:
 	void LoadSample(const std::string& path, std::vector<int16_t>& buffer);
 	void AudioCallbackSpin(const int len);
-	void AudioCallbackSeek(/*uint8_t* stream,*/ const int len);
+	void AudioCallbackSeek(const int len);
 
 	std::vector<int16_t> spin_sample_;
 	std::vector<int16_t> seek_sample_;
-	int spin_pos_ = 0;
-	int seek_pos_ = 0;
-	int last_activity_ = 0;
+	unsigned int spin_pos_ = 0;
+	unsigned int seek_pos_ = 0;
+	int last_activity_     = 0;
 
 	std::shared_ptr<MixerChannel> spin_channel_;
 	std::shared_ptr<MixerChannel> seek_channel_;
 
 	static constexpr int spinup_fade_ms = 300;
 };
+
 
 // Expose the disk noise devices to be able to affect them from hdd/fdd code
 extern std::unique_ptr<DiskNoiseDevice> floppy_noise;

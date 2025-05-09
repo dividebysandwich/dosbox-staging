@@ -1,3 +1,4 @@
+#include "disk_noise.h"
 #include "mixer.h"
 #include "setup.h"
 #include "timer.h"
@@ -10,38 +11,13 @@
 #include <string>
 #include <vector>
 
-class DiskNoiseDevice {
-public:
-	DiskNoiseDevice(const std::string& spin_sample_path,
-	                const std::string& seek_sample_path,
-	                const std::string& spin_channel_name,
-	                const std::string& seek_channel_name);
-
-	void ActivateSpin();
-	void PlaySeek();
-	void AudioCallbackSpin(const int len);
-	void AudioCallbackSeek(const int len);
-
-private:
-	void LoadSample(const std::string& path, std::vector<int16_t>& buffer);
-
-	std::vector<int16_t> spin_sample_;
-	std::vector<int16_t> seek_sample_;
-	unsigned int spin_pos_ = 0;
-	unsigned int seek_pos_ = 0;
-	int last_activity_     = 0;
-
-	std::shared_ptr<MixerChannel> spin_channel_;
-	std::shared_ptr<MixerChannel> seek_channel_;
-
-	static constexpr int spinup_fade_ms = 300;
-};
 
 // Load a disk noise sample. Expects a WAV file with 16-bit PCM data at 44100 Hz.
 void DiskNoiseDevice::LoadSample(const std::string& path, std::vector<int16_t>& buffer)
 {
 	std::ifstream file(path, std::ios::binary);
 	if (!file.is_open()) {
+		LOG_WARNING("DiskNoiseDevice: Failed to open %s", path.c_str());
 		return;
 	}
 
@@ -54,7 +30,7 @@ void DiskNoiseDevice::LoadSample(const std::string& path, std::vector<int16_t>& 
 	while (file.read(reinterpret_cast<char*>(&sample), sizeof(sample))) {
 		temp.push_back(sample);
 	}
-
+	LOG_INFO("DiskNoiseDevice: Loaded %zu samples from %s", temp.size(), path.c_str());
 	buffer = std::move(temp);
 }
 
@@ -205,6 +181,15 @@ void DiskNoiseDevice::AudioCallbackSeek(const int len)
 // //    seek_channel_->AddSamples_s16(frames, out); 
 // }
 
+void DiskNoiseDevice::Shutdown()
+{
+	LOG_INFO("DiskNoiseDevice: Shutting down");
+	spin_channel_->Enable(false);
+	seek_channel_->Enable(false);
+	spin_channel_.reset();
+	seek_channel_.reset();
+}
+
 
 std::unique_ptr<DiskNoiseDevice> floppy_noise = nullptr;
 std::unique_ptr<DiskNoiseDevice> hdd_noise = nullptr;
@@ -240,8 +225,9 @@ void DISKNOISE_Init(Section* section)
 
 void DISKNOISE_ShutDown([[maybe_unused]] Section* section)
 {
-    // TODO: Cleanup?
+    // TODO: Fix Cleanup
     MIXER_LockMixerThread();
+	floppy_noise->Shutdown();
     floppy_noise.reset();
 	hdd_noise.reset();
     MIXER_UnlockMixerThread();
@@ -265,14 +251,14 @@ void init_disknoise_dosbox_settings(Section_prop& secprop)
 	        "Leave empty to not play this noise.\n"
             "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
 
-   	str_prop = secprop.Add_string("hdd_spin_sample", when_idle, "~/Documents/st225_spin.wav");
+   	str_prop = secprop.Add_string("hdd_spin_sample", when_idle, "");
 	assert(str_prop);
 	str_prop->Set_help(
 	        "Path to a .wav file for the hard disk spin noise emulation.\n"
 	        "Leave empty to not play this noise.\n"
             "The file should be a 16-bit PCM WAV file at 44100 Hz.\n");
 
-    str_prop = secprop.Add_string("hdd_seek_sample", when_idle, "~/Documents/st225_seek.wav");
+    str_prop = secprop.Add_string("hdd_seek_sample", when_idle, "");
 	assert(str_prop);
 	str_prop->Set_help(
 	        "Path to a .wav file for the hard disk seek noise emulation.\n"

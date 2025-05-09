@@ -30,7 +30,7 @@ void DiskNoiseDevice::LoadSample(const std::string& path, std::vector<int16_t>& 
 	while (file.read(reinterpret_cast<char*>(&sample), sizeof(sample))) {
 		temp.push_back(sample);
 	}
-	LOG_INFO("DiskNoiseDevice: Loaded %zu samples from %s", temp.size(), path.c_str());
+	LOG_DEBUG("DiskNoiseDevice: Loaded %zu samples from %s", temp.size(), path.c_str());
 	buffer = std::move(temp);
 }
 
@@ -46,7 +46,7 @@ DiskNoiseDevice::DiskNoiseDevice(const std::string& spin_sample_path,
           spin_channel_(nullptr),
           seek_channel_(nullptr)
 {
-    LOG_INFO("DiskNoiseDevice: Loading samples: %s, %s",
+    LOG_DEBUG("DiskNoiseDevice: Loading samples: %s, %s",
              spin_sample_path.c_str(),
              seek_sample_path.c_str());
 	LoadSample(spin_sample_path, spin_sample_);
@@ -56,10 +56,6 @@ DiskNoiseDevice::DiskNoiseDevice(const std::string& spin_sample_path,
 
     MIXER_LockMixerThread();
 
-//	auto spin_callback = [this](int frames) {
-//		std::vector<uint8_t> buffer(frames * sizeof(int16_t));
-//		AudioCallbackSpin(buffer.data(), buffer.size());
-//	};
 	auto spin_callback = std::bind(&DiskNoiseDevice::AudioCallbackSpin,
 							  this,
 							  std::placeholders::_1);
@@ -78,15 +74,6 @@ DiskNoiseDevice::DiskNoiseDevice(const std::string& spin_sample_path,
 	                                 {ChannelFeature::Stereo});
 
                                      
-	// auto callback = std::bind(&CDROM_Interface_Physical::CdAudioCallback,
-	//                           this,
-	//                           std::placeholders::_1);
-	// mixer_channel = MIXER_AddChannel(callback,
-	//                                  REDBOOK_PCM_FRAMES_PER_SECOND,
-	//                                  name.c_str(),
-	//                                  {ChannelFeature::Stereo,
-	//                                   ChannelFeature::DigitalAudio});
-
 	MIXER_UnlockMixerThread();
 
 	spin_channel_->Enable(false);
@@ -100,7 +87,7 @@ DiskNoiseDevice::DiskNoiseDevice(const std::string& spin_sample_path,
 
 void DiskNoiseDevice::ActivateSpin()
 {
-    LOG_INFO("DiskNoiseDevice: Activating spin");
+    LOG_DEBUG("DiskNoiseDevice: Activating spin");
 
     last_activity_ = GetTicks();
 	spin_channel_->Enable(true);
@@ -112,18 +99,17 @@ void DiskNoiseDevice::PlaySeek()
 	seek_channel_->Enable(true);
 }
 
-void DiskNoiseDevice::AudioCallbackSpin(const int len)
+void DiskNoiseDevice::AudioCallbackSpin(const int frames)
 //void DiskNoiseDevice::AudioCallbackSpin(uint8_t* stream, const int len)
 {
-	const int frames = len / sizeof(int16_t);
 	const int now    = GetTicks();
 	const int fade   = (spinup_fade_ms * 44100) / 1000;
 
-	LOG_INFO("DiskNoiseDevice: AudioCallbackSpin: %d frames", frames);
+//	LOG_INFO("DiskNoiseDevice: AudioCallbackSpin: %d frames", frames);
 
-	std::vector<int16_t> out(frames);
+	std::vector<int16_t> out(frames*2);
 
-	for (int i = 0; i < frames; ++i) {
+	for (int i = 0; i < frames*2; ++i) {
 		if (spin_sample_.empty()) {
 			out[i] = 0;
 			continue;
@@ -144,13 +130,12 @@ void DiskNoiseDevice::AudioCallbackSpin(const int len)
 	spin_channel_->AddSamples_s16(frames, out.data()); 
 }
 
-void DiskNoiseDevice::AudioCallbackSeek(const int len)
+void DiskNoiseDevice::AudioCallbackSeek(const int frames)
 {
-	const int frames = len / sizeof(int16_t);
 
-    std::vector<int16_t> out(frames);
+    std::vector<int16_t> out(frames*2);
 
-	for (int i = 0; i < frames; ++i) {
+	for (int i = 0; i < frames*2; ++i) {
 		out[i] = (seek_pos_ < seek_sample_.size())
 		               ? seek_sample_[seek_pos_++]
 		               : 0;
@@ -162,23 +147,6 @@ void DiskNoiseDevice::AudioCallbackSeek(const int len)
     seek_channel_->AddSamples_s16(frames, out.data()); 
 }
 
-
-// void DiskNoiseDevice::AudioCallbackSeek(uint8_t* stream, const int len)
-// {
-// 	auto* out        = reinterpret_cast<int16_t*>(stream);
-// 	const int frames = len / sizeof(int16_t);
-
-// 	for (int i = 0; i < frames; ++i) {
-// 		out[i] = (seek_pos_ < seek_sample_.size())
-// 		               ? seek_sample_[seek_pos_++]
-// 		               : 0;
-// 	}
-
-// 	if (seek_pos_ >= seek_sample_.size()) {
-// 		seek_channel_->Enable(false);
-// 	}
-// //    seek_channel_->AddSamples_s16(frames, out); 
-// }
 
 void DiskNoiseDevice::Shutdown()
 {
@@ -226,11 +194,8 @@ void DISKNOISE_Init(Section* section)
 
 void DISKNOISE_ShutDown([[maybe_unused]] Section* section)
 {
-    // TODO: Fix Cleanup
-//    MIXER_LockMixerThread();
 	floppy_noise->Shutdown();
 	hdd_noise->Shutdown();
-//    MIXER_UnlockMixerThread();
 }
 
 void init_disknoise_dosbox_settings(Section_prop& secprop)

@@ -244,7 +244,7 @@ void DOS_PerformDiskIoDelay(uint16_t data_transferred_bytes, DiskType disk_type)
 	}
 }
 
-static DiskType get_disk_type_from_media_byte(uint8_t media_byte)
+DiskType DOS_GetDiskTypeFromMediaByte(uint8_t media_byte)
 {
 	switch (media_byte) {
 	case 0xF0:
@@ -279,7 +279,7 @@ void DOS_ExecuteRegisteredCallbacksByHandle(uint16_t reg_handle)
 		if (drive >= Drives.size()) {
 			return;
 		}
-		DOS_ExecuteRegisteredCallbacks(get_disk_type_from_media_byte(
+		DOS_ExecuteRegisteredCallbacks(DOS_GetDiskTypeFromMediaByte(
 		        Drives[drive]->GetMediaByte()));
 	}
 }
@@ -294,7 +294,7 @@ static void DOS_PerformDiskIoDelayByHandle(uint16_t data_transferred_bytes,
 			return;
 		}
 		DOS_PerformDiskIoDelay(data_transferred_bytes,
-		                       get_disk_type_from_media_byte(
+		                       DOS_GetDiskTypeFromMediaByte(
 		                               Drives[drive]->GetMediaByte()));
 	}
 }

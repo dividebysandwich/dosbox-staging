@@ -34,6 +34,7 @@
 #include <limits>
 #include <sys/types.h>
 
+#include "../hardware/disk_noise.h"
 #include "cross.h"
 #include "dos_inc.h"
 #include "dos_mscdex.h"
@@ -577,13 +578,19 @@ bool localFile::Read(uint8_t *data, uint16_t *num_bytes)
 		return false;
 	}
 
+	// Store last path to enable disk noise to choose sequential vs. random
+	// access noises
+	DiskNoises::GetInstance()->SetLastIoPath(
+	        path.string(),
+	        DiskNoiseIoType::Read,
+	        DOS_GetDiskTypeFromMediaByte(local_drive.lock()->GetMediaByte()));
+
 	const auto ret = read_native_file(file_handle, data, *num_bytes);
 	*num_bytes     = check_cast<uint16_t>(ret.num_bytes);
 	if (ret.error) {
 		DOS_SetError(DOSERR_ACCESS_DENIED);
 		return false;
 	}
-
 
 	/* Fake harddrive motion. Inspector Gadget with Sound Blaster compatible */
 	/* Same for Igor */
@@ -619,6 +626,13 @@ bool localFile::Write(uint8_t *data, uint16_t *num_bytes)
 		// Truncation succeeded if we made it here
 		return true;
 	}
+
+	// Store last path to enable disk noise to choose sequential vs. random
+	// access noises
+	DiskNoises::GetInstance()->SetLastIoPath(
+	        path.string(),
+	        DiskNoiseIoType::Write,
+	        DOS_GetDiskTypeFromMediaByte(local_drive.lock()->GetMediaByte()));
 
 	// Otherwise we have some data to write
 	const auto ret = write_native_file(file_handle, data, *num_bytes);

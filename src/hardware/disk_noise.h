@@ -28,6 +28,12 @@
 
 #include "mixer.h"
 
+enum DiskNoiseIoType { Read, Write };
+enum DiskNoiseSeekType {
+	Sequential,
+	RandomAccess,
+};
+
 class DiskNoiseDevice {
 public:
 	DiskNoiseDevice(const DiskType disk_type, const bool disk_noise_enabled,
@@ -39,10 +45,15 @@ public:
 	void ActivateSpin();
 	void PlaySeek();
 	AudioFrame GetNextFrame();
+	void SetLastIoPath(const std::string& path,
+	                   DiskNoiseIoType disk_operation_type);
 
 private:
-	bool disk_noise_enabled = false;
-	std::mutex mutex = {};
+	bool disk_noise_enabled          = false;
+	std::mutex mutex                 = {};
+	std::string last_file_read_path  = {};
+	std::string last_file_write_path = {};
+	DiskNoiseSeekType seek_type      = DiskNoiseSeekType::RandomAccess;
 
 	struct SpinSample {
 		std::vector<float> spin_up_sample             = {};
@@ -73,6 +84,9 @@ public:
 	           const std::string& floppy_spin_up, const std::string& floppy_spin,
 	           const std::vector<std::string>& floppy_seek_samples);
 	~DiskNoises();
+	static DiskNoises* GetInstance();
+	void SetLastIoPath(const std::string& path,
+	                   DiskNoiseIoType disk_operation_type, DiskType disk_type);
 
 	std::shared_ptr<MixerChannel> mix_channel = nullptr;
 	std::vector<std::shared_ptr<DiskNoiseDevice>> active_devices = {};

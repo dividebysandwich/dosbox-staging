@@ -80,6 +80,14 @@ DiskNoises::DiskNoises(const bool enable_floppy_disk_noise,
 	MIXER_UnlockMixerThread();
 }
 
+DiskNoises* DiskNoises::GetInstance()
+{
+	if (disk_noises != nullptr) {
+		return disk_noises.get();
+	}
+	return nullptr;
+}
+
 void DiskNoises::AudioCallback(const int num_frames_requested)
 {
 	// stereo interleaved buffer
@@ -295,30 +303,56 @@ void DiskNoiseDevice::LoadSeekSamples(const std::vector<std::string>& paths)
 size_t DiskNoiseDevice::ChooseWeightedSeekIndex() const
 {
 	int total_weight = 0;
+	if (seek_type == DiskNoiseSeekType::Sequential) {
+		// Sequential seek, always use the first two samples
+		if (seek.samples.empty() || seek.samples.size() == 1) {
+			return 0;
+		}
+		// Use the first two samples for sequential seek
+		total_weight = seek.sample_weights[0] + seek.sample_weights[1];
+		return (rand() % 2);
+	}
+
+	// Choose a random sample, without weighting
+	std::vector<size_t> valid_indices;
 	for (size_t i = 0; i < seek.samples.size(); ++i) {
 		if (!seek.samples[i].empty()) {
-			total_weight += seek.sample_weights[i];
+			valid_indices.push_back(i);
 		}
 	}
-
-	if (total_weight == 0) {
+	if (valid_indices.empty()) {
 		return 0;
 	}
-
-	const int r = static_cast<int>(rand()) % total_weight;
-	int sum     = 0;
-	for (size_t i = 0; i < seek.samples.size(); ++i) {
-		if (seek.samples[i].empty()) {
-			continue;
-		}
-
-		sum += seek.sample_weights[i];
-		if (r < sum) {
-			return i;
-		}
-	}
-	return 0;
+	const size_t r = static_cast<size_t>(rand()) % valid_indices.size();
+	return valid_indices[r];
 }
+
+// This function influences whether the disk should sound like it is
+// doing more sequential read/writes or seek randomly
+void DiskNoiseDevice::SetLastIoPath(const std::string& path,
+                                    DiskNoiseIoType disk_operation_type)
+{
+	if (!disk_noise_enabled || path.empty()) {
+		return;
+	}
+
+	if (disk_operation_type == DiskNoiseIoType::Write) {
+		if (path.compare(last_file_write_path) == 0) {
+			seek_type = DiskNoiseSeekType::Sequential;
+		} else {
+			seek_type = DiskNoiseSeekType::RandomAccess;
+		}
+		last_file_write_path = path;
+	} else {
+		if (path.compare(last_file_read_path) == 0) {
+			seek_type = DiskNoiseSeekType::Sequential;
+		} else {
+			seek_type = DiskNoiseSeekType::RandomAccess;
+		}
+		last_file_read_path = path;
+	}
+}
+
 DiskNoiseDevice::DiskNoiseDevice(const DiskType disk_type,
                                  const bool disk_noise_enabled,
                                  const std::string& spin_up_sample_path,
@@ -406,6 +440,30 @@ void DiskNoiseDevice::PlaySeek()
 	if (!seek.samples[index].empty()) {
 		seek.current_sample = seek.samples[index];
 		seek.current_it     = seek.current_sample.begin();
+	}
+}
+
+void DiskNoises::SetLastIoPath(const std::string& path,
+                               DiskNoiseIoType disk_operation_type, DiskType disk_type)
+{
+	switch (disk_type) {
+	case DiskType::Floppy:
+		if (disk_noises && disk_noises->floppy_noise) {
+			disk_noises->floppy_noise->SetLastIoPath(path, disk_operation_type);
+		}
+		break;
+	case DiskType::HardDisk:
+		if (disk_noises && disk_noises->hdd_noise) {
+			disk_noises->hdd_noise->SetLastIoPath(path, disk_operation_type);
+		}
+		break;
+	case DiskType::CdRom:
+		// CD-ROM does not currently support disk noise emulation
+		break;
+	default:
+		LOG_WARNING("DISKNOISE: Unknown disk type '%d' for SetLastIoPath",
+		            static_cast<int>(disk_type));
+		break;
 	}
 }
 
